@@ -1,5 +1,6 @@
 import os
 from enum import Enum
+from pathlib import Path
 
 import PIL
 import torch
@@ -123,10 +124,18 @@ class MVTecDataset(torch.utils.data.Dataset):
 
             imgpaths_per_class[classname] = {}
             maskpaths_per_class[classname] = {}
+            k = 4
 
             for anomaly in anomaly_types:
                 anomaly_path = os.path.join(classpath, anomaly)
                 anomaly_files = sorted(os.listdir(anomaly_path))
+                if anomaly != "good":
+                    anomaly_files = anomaly_files[k:]
+                elif self.split == DatasetSplit.TRAIN:
+                    num_holdout = len(
+                        os.listdir(Path(self.source, classname, "test", "good"))
+                    )
+                    anomaly_files = anomaly_files[num_holdout:]
                 imgpaths_per_class[classname][anomaly] = [
                     os.path.join(anomaly_path, x) for x in anomaly_files
                 ]
@@ -145,7 +154,7 @@ class MVTecDataset(torch.utils.data.Dataset):
 
                 if self.split == DatasetSplit.TEST and anomaly != "good":
                     anomaly_mask_path = os.path.join(maskpath, anomaly)
-                    anomaly_mask_files = sorted(os.listdir(anomaly_mask_path))
+                    anomaly_mask_files = sorted(os.listdir(anomaly_mask_path))[k:]
                     maskpaths_per_class[classname][anomaly] = [
                         os.path.join(anomaly_mask_path, x) for x in anomaly_mask_files
                     ]

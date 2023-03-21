@@ -64,14 +64,25 @@ def plot_segmentation_images(
         savename = image_path.split("/")
         savename = "_".join(savename[-save_depth:])
         savename = os.path.join(savefolder, savename)
-        f, axes = plt.subplots(1, 2 + int(masks_provided))
-        axes[0].imshow(image.transpose(1, 2, 0))
-        axes[1].imshow(mask.transpose(1, 2, 0))
-        axes[2].imshow(segmentation)
-        f.set_size_inches(3 * (2 + int(masks_provided)), 3)
-        f.tight_layout()
-        f.savefig(savename)
-        plt.close()
+        # f, axes = plt.subplots(1, 2 + int(masks_provided))
+        # axes[0].imshow(image.transpose(1, 2, 0))
+        # axes[1].imshow(mask.transpose(1, 2, 0))
+        # im = axes[2].imshow(segmentation)
+        # im.set_clim(segmentations.min(), segmentations.max())
+        # f.colorbar(im, ax=axes[2], fraction=0.046, pad=0.04)
+        # f.set_size_inches(3 * (2 + int(masks_provided)), 3)
+        # f.tight_layout()
+        # f.savefig(savename)
+        # plt.close()
+        from PIL import Image
+
+        segmentation = (
+            (segmentation - segmentations.min())
+            / (segmentations.max() - segmentations.min())
+            * 255
+        )
+        im = Image.fromarray(segmentation).convert("RGB")
+        im.save(savename)
 
 
 def create_storage_folder(

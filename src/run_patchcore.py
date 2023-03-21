@@ -62,6 +62,11 @@ def run(
 
     result_collect = []
 
+    auroc_all = []
+    partial_auroc_all = []
+    ap_all = []
+    wAP_all = []
+
     for dataloader_count, dataloaders in enumerate(list_of_dataloaders):
         LOGGER.info(
             "Evaluating dataset [{}] ({}/{})...".format(
@@ -105,9 +110,13 @@ def run(
                         i + 1, len(PatchCore_list)
                     )
                 )
-                scores, segmentations, labels_gt, masks_gt = PatchCore.predict(
-                    dataloaders["testing"]
-                )
+                (
+                    scores,
+                    segmentations,
+                    labels_gt,
+                    masks_gt,
+                    x_type,
+                ) = PatchCore.predict(dataloaders["testing"])
                 aggregator["scores"].append(scores)
                 aggregator["segmentations"].append(segmentations)
 
@@ -118,18 +127,100 @@ def run(
             scores = np.mean(scores, axis=0)
 
             segmentations = np.array(aggregator["segmentations"])
-            min_scores = (
-                segmentations.reshape(len(segmentations), -1)
-                .min(axis=-1)
-                .reshape(-1, 1, 1, 1)
-            )
-            max_scores = (
-                segmentations.reshape(len(segmentations), -1)
-                .max(axis=-1)
-                .reshape(-1, 1, 1, 1)
-            )
-            segmentations = (segmentations - min_scores) / (max_scores - min_scores)
+            # min_scores = (
+            #     segmentations.reshape(len(segmentations), -1)
+            #     .min(axis=-1)
+            #     .reshape(-1, 1, 1, 1)
+            # )
+            # max_scores = (
+            #     segmentations.reshape(len(segmentations), -1)
+            #     .max(axis=-1)
+            #     .reshape(-1, 1, 1, 1)
+            # )
+            # segmentations = (segmentations - min_scores) / (max_scores - min_scores)
             segmentations = np.mean(segmentations, axis=0)
+
+            y = (torch.Tensor(masks_gt) > 0).squeeze().int()
+            y_hat = torch.Tensor(segmentations)
+
+            from torchmetrics_v1_9_3 import _auroc_compute, precision_recall_curve
+
+            auroc = _auroc_compute(y_hat.flatten(), y.flatten(), "binary").item()
+            auroc_all.append(auroc)
+            print("AUROC: {}".format(auroc))
+            partial_AUROC = _auroc_compute(
+                y_hat.flatten(), y.flatten(), "binary", max_fpr=0.3
+            ).item()
+            partial_auroc_all.append(partial_AUROC)
+            print("Partial AUROC: {}".format(partial_AUROC))
+
+            precision, recall, _ = precision_recall_curve(y_hat.flatten(), y.flatten())
+            ap = -torch.sum((recall[1:] - recall[:-1]) * precision[:-1]).item()
+            ap_all.append(ap)
+            print("AP: {}".format(ap))
+
+            # display = PrecisionRecallDisplay.from_predictions(
+            #     y.flatten(), y_hat.flatten()
+            # )
+            # display.figure_.savefig(os.path.join(run_save_path, "pr_curve.png"))
+            from skimage.measure import label, regionprops
+            from statistics import mean
+
+            region_count_per_type = {}
+            regions_per_image = []
+            for i in range(len(y)):
+                regions = regionprops(label(y[i]))
+                if x_type[i] not in region_count_per_type:
+                    region_count_per_type[x_type[i]] = 0
+                region_count_per_type[x_type[i]] += len(regions)
+                regions_per_image.append(regions)
+            region_count_per_type.pop("good")
+
+            mean_region_count = mean(region_count_per_type.values())
+            mean_region_area = mean(
+                [
+                    float(region.area)
+                    for regions in regions_per_image
+                    for region in regions
+                ]
+            )
+            print(type(mean_region_area))
+
+            sample_weights = torch.ones_like(y, dtype=torch.float32)
+            for i in range(len(regions_per_image)):
+                for region in regions_per_image[i]:
+                    sample_weights[i, region.coords[:, 0], region.coords[:, 1]] = (
+                        mean_region_area / region.area
+                    ) * (mean_region_count / region_count_per_type[x_type[i]])
+            print(sample_weights.sum(), y.numel())
+
+            weighted_precision, weighted_recall, _ = precision_recall_curve(
+                y_hat.flatten(), y.flatten(), sample_weights=sample_weights.flatten()
+            )
+
+            wAp = -torch.sum(
+                (weighted_recall[1:] - weighted_recall[:-1]) * weighted_precision[:-1]
+            ).item()
+            wAP_all.append(wAp)
+            print(
+                "wAP: ",
+                -torch.sum(
+                    (weighted_recall[1:] - weighted_recall[:-1])
+                    * weighted_precision[:-1]
+                ).item(),
+            )
+
+            # from deepspeed.profiling.flops_profiler import get_model_profile
+            # from torchvision import models
+
+            # flops, macs, _ = get_model_profile(
+            #     PatchCore_list[0].forward_modules["feature_aggregator"],
+            #     (1, 3, 224, 224),
+            #     print_profile=False,
+            #     as_string=False,
+            # )
+            # print("FLOPS: ", flops)
+            # print("MACS: ", macs)
 
             anomaly_labels = [
                 x[1] != "good" for x in dataloaders["testing"].dataset.data_to_iterate
@@ -145,6 +236,12 @@ def run(
                 ]
 
                 def image_transform(image):
+                    dataloaders["testing"].dataset.transform_std = [0.229, 0.224, 0.225]
+                    dataloaders["testing"].dataset.transform_mean = [
+                        0.485,
+                        0.456,
+                        0.406,
+                    ]
                     in_std = np.array(
                         dataloaders["testing"].dataset.transform_std
                     ).reshape(-1, 1, 1)
@@ -224,6 +321,11 @@ def run(
                     PatchCore.save_to_path(patchcore_save_path, prepend)
 
         LOGGER.info("\n\n-----\n")
+
+    print("AUROC: ", mean(auroc_all))
+    print("partial AUROC: ", mean(partial_auroc_all))
+    print("AP: ", mean(ap_all))
+    print("wAP: ", mean(wAP_all))
 
     # Store all results and mean scores to a csv-file.
     result_metric_names = list(result_collect[-1].keys())[1:]

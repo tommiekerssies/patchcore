@@ -156,7 +156,9 @@ class Preprocessing(torch.nn.Module):
     def forward(self, features):
         _features = []
         for module, feature in zip(self.preprocessing_modules, features):
+            # print("before: ", feature.shape)
             _features.append(module(feature))
+            # print("after: ", _features[-1].shape)
         return torch.stack(_features, dim=1)
 
 
@@ -166,7 +168,9 @@ class MeanMapper(torch.nn.Module):
         self.preprocessing_dim = preprocessing_dim
 
     def forward(self, features):
+        # print(features.shape)
         features = features.reshape(len(features), 1, -1)
+        # print(features.shape)
         return F.adaptive_avg_pool1d(features, self.preprocessing_dim).squeeze(1)
 
 
@@ -190,7 +194,6 @@ class RescaleSegmentor:
         self.smoothing = 4
 
     def convert_to_segmentation(self, patch_scores):
-
         with torch.no_grad():
             if isinstance(patch_scores, np.ndarray):
                 patch_scores = torch.from_numpy(patch_scores)
