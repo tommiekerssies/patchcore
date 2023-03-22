@@ -1,6 +1,7 @@
 ## AUTOPATCH UPDATE INSTRUCTIONS
 We updated the PatchCore library for evaluation in the AutoPatch paper. We used the following command to generate the PatchCore baseline results:
-```cd src && python run_patchcore.py --gpu 4 --seed 0 --log_group IM224_WR50_L2-3_P01_D1024-1024_PS-3_AN-1_S0 --log_project MVTecAD_Results results patch_core -b wideresnet50 -le layer2 -le layer3 --faiss_on_gpu --pretrain_embed_dimension 1024 --target_embed_dimension 1024 --anomaly_scorer_num_nn 1 --patchsize 3 sampler identity dataset --resize 224 --imagesize 224 -d carpet -d grid -d leather -d tile -d wood -d bottle -d cable -d capsule -d hazelnut -d metal_nut -d pill -d screw -d toothbrush -d transistor -d zipper mvtec /dataB1/tommie_kerssies/MVTec```
+```python src/run_patchcore.py --gpu 0 --seed 0 --log_group IM224_WR50_L2-3_P01_D1024-1024_PS-3_AN-1_S0 --log_project MVTecAD_Results results patch_core -b wideresnet50 -le layer2 -le layer3 --faiss_on_gpu --pretrain_embed_dimension 1024 --target_embed_dimension 1024 --anomaly_scorer_num_nn 1 --patchsize 3 sampler identity dataset --resize 224 --imagesize 224 -d carpet -d grid -d leather -d tile -d wood -d bottle -d cable -d capsule -d hazelnut -d metal_nut -d pill -d screw -d toothbrush -d transistor -d zipper mvtec ../../MVTec```
+The raw output of this command can be found in results.txt
 
 # Towards Total Recall in Industrial Anomaly Detection
 
